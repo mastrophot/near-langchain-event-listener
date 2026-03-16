@@ -2,6 +2,7 @@ import json
 
 import httpx
 
+from near_langchain_event_listener.errors import NEAREventListenerError
 from near_langchain_event_listener.langchain_tools import NEAREventListenerToolkit, get_near_event_listener_tools
 from near_langchain_event_listener.listener import NEAREventListener
 from near_langchain_event_listener.rpc import NEARRPCClient
@@ -22,7 +23,15 @@ class FakeRPC:
                     "actions": [{"FunctionCall": {"method_name": "ping"}}],
                 }
             ],
-            "receipts_outcome": [],
+            "receipts_outcome": [
+                {
+                    "id": "receipt_42",
+                    "outcome": {
+                        "executor_id": "alice.near",
+                        "logs": ['EVENT_JSON:{"standard":"nep141","event":"ft_transfer","data":[]}'],
+                    },
+                }
+            ],
         }
 
     def block(self, network: str, *, finality: str = "final") -> dict:
@@ -86,6 +95,24 @@ def test_langchain_tools_return_json() -> None:
     assert poll_out["matched_events"] == 1
 
 
+def test_event_json_specific_filter_matches() -> None:
+    listener = NEAREventListener(rpc_client=FakeRPC())
+    listener.subscribe(account_id="alice.near", event_types=["event_json:nep141:ft_transfer"])
+    result = listener.poll_once(network="mainnet", max_blocks=1)
+    assert result["matched_events"] == 1
+    assert result["events"][0]["event"]["event_type"] == "event_json"
+
+
+def test_invalid_callback_url_is_rejected() -> None:
+    listener = NEAREventListener(rpc_client=FakeRPC())
+    try:
+        listener.subscribe(account_id="alice.near", callback_url="ftp://bad-url")
+    except NEAREventListenerError as exc:
+        assert "invalid_callback_url" in str(exc)
+    else:
+        raise AssertionError("Expected invalid callback URL to raise")
+
+
 def test_rpc_reconnect_fallback() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if "rpc1.invalid" in str(request.url):
@@ -108,3 +135,4 @@ def test_default_tool_factory_exposes_expected_tools() -> None:
     tools = {tool.name for tool in get_near_event_listener_tools()}
     assert "near_event_subscribe_account" in tools
     assert "near_event_poll" in tools
+    assert "near_event_listener_status" in tools

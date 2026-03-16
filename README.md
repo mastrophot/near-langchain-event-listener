@@ -6,6 +6,7 @@ LangChain tools for monitoring NEAR blockchain events with account subscriptions
 
 - Subscribe to account-level events
 - Filter by event type (`transfer`, `function_call`, `event_json`, `receipt_log`)
+- Advanced `EVENT_JSON` filtering (`event_json:ft_transfer`, `event_json:nep141:ft_transfer`)
 - Parse event data from transactions and `EVENT_JSON` logs
 - Trigger HTTP callbacks for matched events
 - Retry and endpoint failover for resilient RPC access
@@ -46,6 +47,7 @@ print(poll["matched_events"])
 - `near_event_subscribe_account`
 - `near_event_unsubscribe`
 - `near_event_list_subscriptions`
+- `near_event_listener_status`
 - `near_event_poll`
 
 ## API Notes
@@ -54,6 +56,7 @@ print(poll["matched_events"])
 - First poll starts at current head block to avoid large historical backfill.
 - Callback delivery uses HTTP POST and retries on failure.
 - RPC reconnection uses multiple endpoints and retry backoff.
+- Callback URLs are validated (`http://` or `https://`).
 
 ## Development
 

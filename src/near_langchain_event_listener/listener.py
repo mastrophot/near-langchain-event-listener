@@ -37,9 +37,19 @@ class NEAREventListener:
     ) -> Dict[str, Any]:
         if not account_id:
             raise NEAREventListenerError("invalid_account", "account_id is required")
+        if callback_url and not callback_url.startswith(("http://", "https://")):
+            raise NEAREventListenerError(
+                "invalid_callback_url",
+                "callback_url must start with http:// or https://",
+                {"callback_url": callback_url},
+            )
 
         sub_id = str(uuid.uuid4())
-        normalized_event_types = {x.strip() for x in (event_types or []) if x and x.strip()}
+        normalized_event_types = {
+            self._normalize_event_filter(x)
+            for x in (event_types or [])
+            if x and self._normalize_event_filter(x)
+        }
 
         self.subscriptions[sub_id] = Subscription(
             subscription_id=sub_id,
@@ -61,6 +71,12 @@ class NEAREventListener:
         return {
             "subscriptions": [self._subscription_to_dict(s) for s in self.subscriptions.values()],
             "count": len(self.subscriptions),
+        }
+
+    def status(self) -> Dict[str, Any]:
+        return {
+            "subscriptions_count": len(self.subscriptions),
+            "last_processed_height": dict(self.last_processed_height),
         }
 
     def poll_once(
@@ -140,9 +156,41 @@ class NEAREventListener:
     def _matches_subscription(self, event: ParsedEvent, sub: Subscription) -> bool:
         if sub.account_id not in event.account_ids:
             return False
-        if sub.event_types and event.event_type not in sub.event_types:
+        if sub.event_types and not any(self._event_filter_matches(event, x) for x in sub.event_types):
             return False
         return True
+
+    @staticmethod
+    def _normalize_event_filter(token: str) -> str:
+        return token.strip().lower()
+
+    @staticmethod
+    def _event_filter_matches(event: ParsedEvent, token: str) -> bool:
+        event_type = event.event_type.lower()
+        if token == event_type:
+            return True
+
+        if event_type != "event_json":
+            return False
+        if not token.startswith("event_json"):
+            return False
+
+        event_payload = event.payload.get("event", {})
+        event_name = str(event_payload.get("event", "")).lower()
+        standard = str(event_payload.get("standard", "")).lower()
+
+        # Supported filter formats:
+        # - event_json
+        # - event_json:ft_transfer
+        # - event_json:nep141:ft_transfer
+        parts = token.split(":")
+        if len(parts) == 1:
+            return token == "event_json"
+        if len(parts) == 2:
+            return event_name == parts[1]
+        if len(parts) >= 3:
+            return standard == parts[1] and event_name == parts[2]
+        return False
 
     def _dispatch_callback(self, sub: Subscription, payload: Dict[str, Any]) -> Dict[str, Any]:
         if not sub.callback_url:

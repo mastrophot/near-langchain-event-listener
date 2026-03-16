@@ -62,6 +62,11 @@ class NEAREventListenerToolkit:
                 func=self._list_subscriptions,
             ),
             StructuredTool.from_function(
+                name="near_event_listener_status",
+                description="Get listener runtime status (subscriptions count and last processed block heights).",
+                func=self._status,
+            ),
+            StructuredTool.from_function(
                 name="near_event_poll",
                 description="Poll NEAR blocks, parse events, apply filters, and trigger callbacks.",
                 args_schema=PollInput,
@@ -84,6 +89,12 @@ class NEAREventListenerToolkit:
     def _list_subscriptions(self) -> str:
         try:
             return _safe_json(self.listener.list_subscriptions())
+        except Exception as exc:
+            return _wrap_error(exc)
+
+    def _status(self) -> str:
+        try:
+            return _safe_json(self.listener.status())
         except Exception as exc:
             return _wrap_error(exc)
 
